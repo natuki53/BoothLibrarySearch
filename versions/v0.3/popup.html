@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Booth Library Search For VRChat v0.3</title>
+    <style>
+        body {
+            width: 300px;
+            padding: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .version-badge {
+            background: #ff6b6b;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+        .title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .subtitle {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-bottom: 15px;
+        }
+        .feature-list {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .feature-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        .feature-icon {
+            margin-right: 8px;
+            font-size: 14px;
+        }
+        .performance-info {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .performance-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4ade80;
+            margin-bottom: 5px;
+        }
+        .performance-label {
+            font-size: 11px;
+            opacity: 0.8;
+        }
+        .footer {
+            text-align: center;
+            font-size: 10px;
+            opacity: 0.6;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">
+            Booth Library Search
+            <span class="version-badge">v0.3</span>
+        </div>
+        <div class="subtitle">VRChat用アバター検索の高速化版</div>
+    </div>
+
+    <div class="performance-info">
+        <div class="performance-number">2-3x</div>
+        <div class="performance-label">検索速度向上</div>
+    </div>
+
+    <div class="feature-list">
+        <div class="feature-item">
+            <span class="feature-icon">🚀</span>
+            並列処理による高速検索
+        </div>
+        <div class="feature-item">
+            <span class="feature-icon">💾</span>
+            LRUキャッシュシステム
+        </div>
+        <div class="feature-item">
+            <span class="feature-icon">📊</span>
+            リアルタイムパフォーマンス監視
+        </div>
+        <div class="feature-item">
+            <span class="feature-icon">🎯</span>
+            Web Workers対応
+        </div>
+        <div class="feature-item">
+            <span class="feature-icon">⚡</span>
+            リアルタイム検索
+        </div>
+    </div>
+
+    <div class="footer">
+        Boothライブラリページで使用してください<br>
+        © 2024 VRChat Avatar Search Extension
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
