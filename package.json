@@ -8,8 +8,19 @@
     "build:v0.1": "node scripts/build.js v0.1",
     "build:v0.2": "node scripts/build.js v0.2",
     "build:v0.3": "node scripts/build.js v0.3",
-    "test": "echo 'Test script placeholder'",
-    "dev": "echo 'Development script placeholder'",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "dev": "jest --watch --notify",
+    "dev:test": "jest --watch --verbose",
+    "dev:build": "node scripts/dev.js",
+    "dev:build:v0.1": "node scripts/dev.js v0.1",
+    "dev:build:v0.2": "node scripts/dev.js v0.2",
+    "dev:build:v0.3": "node scripts/dev.js v0.3",
+    "reload": "node scripts/reload-extension.js",
+    "reload:v0.1": "node scripts/reload-extension.js v0.1",
+    "reload:v0.2": "node scripts/reload-extension.js v0.2",
+    "reload:v0.3": "node scripts/reload-extension.js v0.3",
     "package": "echo 'Package script placeholder'"
   },
   "keywords": [
@@ -18,8 +29,10 @@
     "chrome-extension",
     "search"
   ],
-  "author": "Your Name",
+  "author": "natuki",
   "license": "MIT",
-  "devDependencies": {},
-  "dependencies": {}
+  "devDependencies": {
+    "jest": "^30.0.5",
+    "jest-environment-jsdom": "^30.0.5"
+  }
 }
