@@ -1,0 +1,58 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Extract version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+    - name: Build extension
+      run: npm run build:${{ steps.get_version.outputs.VERSION }}
+      
+    - name: Create release assets
+      run: |
+        cd dist/${{ steps.get_version.outputs.VERSION }}
+        zip -r ../../booth-library-search-${{ steps.get_version.outputs.VERSION }}.zip .
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: booth-library-search-${{ steps.get_version.outputs.VERSION }}.zip
+        body: |
+          ## リリースノート
+          
+          ### バージョン ${{ steps.get_version.outputs.VERSION }}
+          
+          - Chrome拡張機能のビルドが完了しました
+          - ダウンロード可能なZIPファイルが添付されています
+          
+          ### インストール方法
+          1. ダウンロードしたZIPファイルを解凍
+          2. Chromeで `chrome://extensions/` を開く
+          3. デベロッパーモードを有効化
+          4. 「パッケージ化されていない拡張機能を読み込む」で解凍したフォルダを選択
+          
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

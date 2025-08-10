@@ -21,6 +21,7 @@
     "reload:v0.1": "node scripts/reload-extension.js v0.1",
     "reload:v0.2": "node scripts/reload-extension.js v0.2",
     "reload:v0.3": "node scripts/reload-extension.js v0.3",
+    "release": "node scripts/release.js",
     "package": "echo 'Package script placeholder'"
   },
   "keywords": [
