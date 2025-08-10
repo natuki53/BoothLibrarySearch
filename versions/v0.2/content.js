@@ -217,10 +217,10 @@
 
         // アイテムを一つ一つ順番に処理する関数
         async function processItemSequentially(item, selectedAvatar, keyword, avatarKeywords, itemIndex) {
-            console.log(`[アイテム${itemIndex}] 処理開始: ${item.querySelector('.text-text-default.font-bold')?.innerText || 'タイトルなし'}`);
+            console.log(`[アイテム${itemIndex}] 処理開始: ${item.querySelector('.text-text-default.font-bold.typography-16.\\!preserve-half-leading.mb-8.break-all')?.innerText || 'タイトルなし'}`);
             
-            // 1. タイトル検索
-            let title = item.querySelector('.text-text-default.font-bold')?.innerText.toLowerCase() || "";
+            // 1. タイトル検索（新しいクラス指定）
+            let title = item.querySelector('.text-text-default.font-bold.typography-16.\\!preserve-half-leading.mb-8.break-all')?.innerText.toLowerCase() || "";
             let fullText = title;
             
             console.log(`[アイテム${itemIndex}] タイトル検索: "${title}"`);
@@ -236,29 +236,43 @@
                 return true;
             }
             
-            console.log(`[アイテム${itemIndex}] タイトル検索: ヒットなし - 次の検索へ`);
+            console.log(`[アイテム${itemIndex}] タイトル検索: ヒットなし - ヘッダー検索へ`);
             
-            // 2. ヘッダー検索（no-underlineリンクのテキストとhref）
-            const link = item.querySelector('a.no-underline');
-            if (link && link.href) {
-                const linkText = link.innerText?.toLowerCase() || '';
-                const linkHref = link.href?.toLowerCase() || '';
+            // 2. ヘッダー検索（新しいクラス指定）
+            const headers = item.querySelectorAll('div.typography-14.\\!preserve-half-leading');
+            let headerMatch = false;
+            
+            if (headers.length > 0) {
+                console.log(`[アイテム${itemIndex}] ヘッダー検索: ${headers.length}個のヘッダー要素を検索`);
                 
-                console.log(`[アイテム${itemIndex}] ヘッダー検索: リンクテキスト "${linkText}", URL "${linkHref}"`);
-                
-                const matchAvatarInLink = !selectedAvatar || avatarKeywords.some(v => linkText.includes(v) || linkHref.includes(v));
-                const matchKeywordInLink = !keyword || linkText.includes(keyword) || linkHref.includes(keyword);
-                const isMatchInLink = selectedAvatar ? (matchAvatarInLink && matchKeywordInLink) : matchKeywordInLink;
-                
-                if (isMatchInLink) {
-                    console.log(`[アイテム${itemIndex}] ヘッダー検索: ヒット - リンク情報で一致`);
-                    item.style.display = '';
-                    return true;
+                for (let i = 0; i < headers.length; i++) {
+                    const header = headers[i];
+                    const headerText = header.innerText?.toLowerCase() || '';
+                    
+                    console.log(`[アイテム${itemIndex}] ヘッダー${i + 1}検索: "${headerText}"`);
+                    
+                    const matchAvatarInHeader = !selectedAvatar || avatarKeywords.some(v => headerText.includes(v));
+                    const matchKeywordInHeader = !keyword || headerText.includes(keyword);
+                    const isMatchInHeader = selectedAvatar ? (matchAvatarInHeader && matchKeywordInHeader) : matchKeywordInHeader;
+                    
+                    if (isMatchInHeader) {
+                        console.log(`[アイテム${itemIndex}] ヘッダー${i + 1}検索: ヒット - ヘッダーで一致`);
+                        item.style.display = '';
+                        return true;
+                    }
                 }
                 
-                console.log(`[アイテム${itemIndex}] ヘッダー検索: ヒットなし - fetchが必要`);
-                
-                // 3. fetchが必要な場合のみ実行
+                console.log(`[アイテム${itemIndex}] ヘッダー検索: 全ヘッダーでヒットなし - fetchが必要`);
+            } else {
+                console.log(`[アイテム${itemIndex}] ヘッダー検索: ヘッダー要素なし - fetchが必要`);
+            }
+            
+            // 3. タイトルとヘッダーでヒットしない場合はfetch処理
+            console.log(`[アイテム${itemIndex}] タイトル・ヘッダー検索: ヒットなし - fetch処理へ`);
+            
+            // fetch処理（no-underlineリンクのhrefを使用）
+            const link = item.querySelector('a.no-underline');
+            if (link && link.href) {
                 if (!lastFetchUrls.has(link.href)) {
                     lastFetchUrls.add(link.href);
                     fetchInProgress++;
@@ -403,7 +417,7 @@
                     return false;
                 }
             } else {
-                console.log(`[アイテム${itemIndex}] ヘッダー検索: リンクなし - 非表示`);
+                console.log(`[アイテム${itemIndex}] fetch処理: リンクなし - 非表示`);
                 item.style.display = 'none';
                 return false;
             }
