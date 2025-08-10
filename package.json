@@ -1,0 +1,25 @@
+{
+  "name": "booth-library-search-for-vrchat",
+  "version": "0.1.0",
+  "description": "VRChatでBoothのライブラリを検索するためのChrome拡張機能",
+  "main": "index.js",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "build:v0.1": "node scripts/build.js v0.1",
+    "build:v0.2": "node scripts/build.js v0.2",
+    "build:v0.3": "node scripts/build.js v0.3",
+    "test": "echo 'Test script placeholder'",
+    "dev": "echo 'Development script placeholder'",
+    "package": "echo 'Package script placeholder'"
+  },
+  "keywords": [
+    "vrchat",
+    "booth",
+    "chrome-extension",
+    "search"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {},
+  "dependencies": {}
+}
