@@ -216,14 +216,14 @@
         let isProcessing = false;
 
         // アイテムを一つ一つ順番に処理する関数
-        async function processItemSequentially(item, selectedAvatar, keyword, avatarKeywords) {
-            console.log(`[処理開始] アイテム: ${item.querySelector('.text-text-default.font-bold')?.innerText || 'タイトルなし'}`);
+        async function processItemSequentially(item, selectedAvatar, keyword, avatarKeywords, itemIndex) {
+            console.log(`[アイテム${itemIndex}] 処理開始: ${item.querySelector('.text-text-default.font-bold')?.innerText || 'タイトルなし'}`);
             
             // 1. タイトル検索
             let title = item.querySelector('.text-text-default.font-bold')?.innerText.toLowerCase() || "";
             let fullText = title;
             
-            console.log(`[タイトル検索] タイトル: "${title}"`);
+            console.log(`[アイテム${itemIndex}] タイトル検索: "${title}"`);
             
             // アバター名（日本語・英語）いずれかに一致するか
             const matchAvatar = !selectedAvatar || avatarKeywords.some(v => fullText.includes(v));
@@ -231,12 +231,12 @@
             const isMatch = selectedAvatar ? (matchAvatar && matchKeyword) : matchKeyword;
             
             if (isMatch) {
-                console.log(`[タイトル検索] ヒット: タイトルで一致`);
+                console.log(`[アイテム${itemIndex}] タイトル検索: ヒット - タイトルで一致`);
                 item.style.display = '';
                 return true;
             }
             
-            console.log(`[タイトル検索] ヒットなし: 次の検索へ`);
+            console.log(`[アイテム${itemIndex}] タイトル検索: ヒットなし - 次の検索へ`);
             
             // 2. ヘッダー検索（no-underlineリンクのテキストとhref）
             const link = item.querySelector('a.no-underline');
@@ -244,20 +244,19 @@
                 const linkText = link.innerText?.toLowerCase() || '';
                 const linkHref = link.href?.toLowerCase() || '';
                 
-                console.log(`[ヘッダー検索] リンクテキスト: "${linkText}"`);
-                console.log(`[ヘッダー検索] リンクURL: "${linkHref}"`);
+                console.log(`[アイテム${itemIndex}] ヘッダー検索: リンクテキスト "${linkText}", URL "${linkHref}"`);
                 
                 const matchAvatarInLink = !selectedAvatar || avatarKeywords.some(v => linkText.includes(v) || linkHref.includes(v));
                 const matchKeywordInLink = !keyword || linkText.includes(keyword) || linkHref.includes(keyword);
                 const isMatchInLink = selectedAvatar ? (matchAvatarInLink && matchKeywordInLink) : matchKeywordInLink;
                 
                 if (isMatchInLink) {
-                    console.log(`[ヘッダー検索] ヒット: リンク情報で一致`);
+                    console.log(`[アイテム${itemIndex}] ヘッダー検索: ヒット - リンク情報で一致`);
                     item.style.display = '';
                     return true;
                 }
                 
-                console.log(`[ヘッダー検索] ヒットなし: fetchが必要`);
+                console.log(`[アイテム${itemIndex}] ヘッダー検索: ヒットなし - fetchが必要`);
                 
                 // 3. fetchが必要な場合のみ実行
                 if (!lastFetchUrls.has(link.href)) {
@@ -265,7 +264,7 @@
                     fetchInProgress++;
                     globalLoading.style.display = '';
                     
-                    console.log(`[fetch開始] URL: ${link.href}`);
+                    console.log(`[アイテム${itemIndex}] fetch開始: ${link.href}`);
                     
                     try {
                         const response = await new Promise((resolve) => {
@@ -281,7 +280,7 @@
                         }
                         
                         if (!response || !response.html) {
-                            console.log(`[fetch結果] エラーまたはHTMLなし`);
+                            console.log(`[アイテム${itemIndex}] fetch結果: エラーまたはHTMLなし`);
                             item.style.display = 'none';
                             return false;
                         }
@@ -371,26 +370,26 @@
                         // テキストの正規化
                         allText = allText.replace(/\s+/g, ' ').trim().toLowerCase();
                         
-                        console.log(`[fetch結果] URL: ${link.href}`);
-                        console.log(`[fetch結果] テキストソース: ${textSources.join(', ')}`);
-                        console.log(`[fetch結果] 取得テキスト長: ${allText.length}文字`);
-                        console.log(`[fetch結果] 取得テキスト: ${allText.substring(0, 500)}...`);
+                        console.log(`[アイテム${itemIndex}] fetch結果: URL ${link.href}`);
+                        console.log(`[アイテム${itemIndex}] fetch結果: テキストソース ${textSources.join(', ')}`);
+                        console.log(`[アイテム${itemIndex}] fetch結果: 取得テキスト長 ${allText.length}文字`);
+                        console.log(`[アイテム${itemIndex}] fetch結果: 取得テキスト ${allText}`);
                         
                         const matchAvatarSub = !selectedAvatar || avatarKeywords.some(v => allText.includes(v));
                         const matchKeywordSub = !keyword || allText.includes(keyword);
                         const isMatchSub = selectedAvatar ? (matchAvatarSub && matchKeywordSub) : matchKeywordSub;
                         
                         if (isMatchSub) {
-                            console.log(`[fetch結果] ヒット: 本文で一致 (テキスト長: ${allText.length}文字)`);
+                            console.log(`[アイテム${itemIndex}] fetch結果: ヒット - 本文で一致 (テキスト長: ${allText.length}文字)`);
                         } else {
-                            console.log(`[fetch結果] ヒットなし: 完全に不一致 (テキスト長: ${allText.length}文字)`);
+                            console.log(`[アイテム${itemIndex}] fetch結果: ヒットなし - 完全に不一致 (テキスト長: ${allText.length}文字)`);
                         }
                         
                         item.style.display = isMatchSub ? '' : 'none';
                         return isMatchSub;
                         
                     } catch (error) {
-                        console.error(`[fetchエラー] URL: ${link.href}`, error);
+                        console.error(`[アイテム${itemIndex}] fetchエラー: URL ${link.href}`, error);
                         fetchInProgress--;
                         if (fetchInProgress <= 0) {
                             globalLoading.style.display = 'none';
@@ -399,12 +398,12 @@
                         return false;
                     }
                 } else {
-                    console.log(`[fetchスキップ] 既に処理済み: ${link.href}`);
+                    console.log(`[アイテム${itemIndex}] fetchスキップ: 既に処理済み ${link.href}`);
                     item.style.display = 'none';
                     return false;
                 }
             } else {
-                console.log(`[ヘッダー検索] リンクなし: 非表示`);
+                console.log(`[アイテム${itemIndex}] ヘッダー検索: リンクなし - 非表示`);
                 item.style.display = 'none';
                 return false;
             }
@@ -418,8 +417,8 @@
             console.log(`[キュー処理開始] 残りアイテム数: ${processingQueue.length}`);
             
             while (processingQueue.length > 0) {
-                const { item, selectedAvatar, keyword, avatarKeywords } = processingQueue.shift();
-                await processItemSequentially(item, selectedAvatar, keyword, avatarKeywords);
+                const { item, selectedAvatar, keyword, avatarKeywords, itemIndex } = processingQueue.shift();
+                await processItemSequentially(item, selectedAvatar, keyword, avatarKeywords, itemIndex);
                 
                 // 少し待機してから次のアイテムを処理
                 await new Promise(resolve => setTimeout(resolve, 100));
@@ -453,8 +452,7 @@
             processingQueue = [];
             
             items.forEach((item, index) => {
-                console.log(`[アイテム${index + 1}] キューに追加`);
-                processingQueue.push({ item, selectedAvatar, keyword, avatarKeywords });
+                processingQueue.push({ item, selectedAvatar, keyword, avatarKeywords, itemIndex: index });
             });
 
             // キュー処理を開始
