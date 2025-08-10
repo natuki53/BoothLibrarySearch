@@ -196,8 +196,10 @@
         //UIを配置
         wrapper.appendChild(dropdown);
         wrapper.appendChild(searchBox);
+        wrapper.appendChild(searchBox);
         wrapper.appendChild(searchBtn);
         container.prepend(wrapper);
+        
         // グローバルロードインジケータを検索UI下に設置
         let globalLoading = document.createElement('div');
         globalLoading.id = 'booth-global-loading';
@@ -210,11 +212,229 @@
         let lastKeyword = '';
         let lastFetchUrls = new Set();
         let fetchInProgress = 0;
+        let processingQueue = [];
+        let isProcessing = false;
+
+        // アイテムを一つ一つ順番に処理する関数
+        async function processItemSequentially(item, selectedAvatar, keyword, avatarKeywords) {
+            console.log(`[処理開始] アイテム: ${item.querySelector('.text-text-default.font-bold')?.innerText || 'タイトルなし'}`);
+            
+            // 1. タイトル検索
+            let title = item.querySelector('.text-text-default.font-bold')?.innerText.toLowerCase() || "";
+            let fullText = title;
+            
+            console.log(`[タイトル検索] タイトル: "${title}"`);
+            
+            // アバター名（日本語・英語）いずれかに一致するか
+            const matchAvatar = !selectedAvatar || avatarKeywords.some(v => fullText.includes(v));
+            const matchKeyword = !keyword || fullText.includes(keyword);
+            const isMatch = selectedAvatar ? (matchAvatar && matchKeyword) : matchKeyword;
+            
+            if (isMatch) {
+                console.log(`[タイトル検索] ヒット: タイトルで一致`);
+                item.style.display = '';
+                return true;
+            }
+            
+            console.log(`[タイトル検索] ヒットなし: 次の検索へ`);
+            
+            // 2. ヘッダー検索（no-underlineリンクのテキストとhref）
+            const link = item.querySelector('a.no-underline');
+            if (link && link.href) {
+                const linkText = link.innerText?.toLowerCase() || '';
+                const linkHref = link.href?.toLowerCase() || '';
+                
+                console.log(`[ヘッダー検索] リンクテキスト: "${linkText}"`);
+                console.log(`[ヘッダー検索] リンクURL: "${linkHref}"`);
+                
+                const matchAvatarInLink = !selectedAvatar || avatarKeywords.some(v => linkText.includes(v) || linkHref.includes(v));
+                const matchKeywordInLink = !keyword || linkText.includes(keyword) || linkHref.includes(keyword);
+                const isMatchInLink = selectedAvatar ? (matchAvatarInLink && matchKeywordInLink) : matchKeywordInLink;
+                
+                if (isMatchInLink) {
+                    console.log(`[ヘッダー検索] ヒット: リンク情報で一致`);
+                    item.style.display = '';
+                    return true;
+                }
+                
+                console.log(`[ヘッダー検索] ヒットなし: fetchが必要`);
+                
+                // 3. fetchが必要な場合のみ実行
+                if (!lastFetchUrls.has(link.href)) {
+                    lastFetchUrls.add(link.href);
+                    fetchInProgress++;
+                    globalLoading.style.display = '';
+                    
+                    console.log(`[fetch開始] URL: ${link.href}`);
+                    
+                    try {
+                        const response = await new Promise((resolve) => {
+                            chrome.runtime.sendMessage({
+                                type: 'fetchHtml',
+                                url: link.href
+                            }, resolve);
+                        });
+                        
+                        fetchInProgress--;
+                        if (fetchInProgress <= 0) {
+                            globalLoading.style.display = 'none';
+                        }
+                        
+                        if (!response || !response.html) {
+                            console.log(`[fetch結果] エラーまたはHTMLなし`);
+                            item.style.display = 'none';
+                            return false;
+                        }
+                        
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.html, 'text/html');
+                        
+                        // より多くのテキストを取得するための改善された要素選択
+                        let allText = '';
+                        let textSources = [];
+                        
+                        // 1. 優先度1: メインコンテンツエリア
+                        const mainContentSelectors = [
+                            '.grid.desktop\\:gap-40.mobile\\:gap-24',
+                            '.main-info-column',
+                            '.item-description',
+                            '.description',
+                            '[data-testid="item-description"]'
+                        ];
+                        
+                        for (const selector of mainContentSelectors) {
+                            const elem = doc.querySelector(selector);
+                            if (elem) {
+                                const text = elem.innerText.trim();
+                                if (text.length > 50) { // 十分な長さのテキストのみ
+                                    allText += text + ' ';
+                                    textSources.push(`優先度1(${selector}): ${text.length}文字`);
+                                    break; // 最初に見つかった要素を使用
+                                }
+                            }
+                        }
+                        
+                        // 2. 優先度2: 一般的なテキスト要素
+                        if (allText.length < 100) {
+                            const textElements = doc.querySelectorAll('p, div, span, h1, h2, h3, h4, h5, h6');
+                            let combinedText = '';
+                            for (const elem of textElements) {
+                                const text = elem.innerText.trim();
+                                if (text.length > 10 && text.length < 1000) { // 適切な長さのテキスト
+                                    combinedText += text + ' ';
+                                }
+                            }
+                            if (combinedText.length > allText.length) {
+                                allText = combinedText;
+                                textSources.push(`優先度2(一般的要素): ${combinedText.length}文字`);
+                            }
+                        }
+                        
+                        // 3. 優先度3: 特定のクラスを持つ要素
+                        if (allText.length < 100) {
+                            const specificSelectors = [
+                                '.autolink.break-words.typography-16.whitespace-pre-line',
+                                '.break-words.js-autolink.\\!m-0.\\!p-0.whitespace-pre-line.typography-14.desktop\\:typography-16',
+                                '.typography-16',
+                                '.typography-14'
+                            ];
+                            
+                            for (const selector of specificSelectors) {
+                                const elem = doc.querySelector(selector);
+                                if (elem) {
+                                    const text = elem.innerText.trim();
+                                    if (text.length > allText.length) {
+                                        allText = text;
+                                        textSources.push(`優先度3(${selector}): ${text.length}文字`);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 4. フォールバック: body全体から不要な要素を除外
+                        if (allText.length < 50) {
+                            const body = doc.body;
+                            if (body) {
+                                // スクリプト、スタイル、ナビゲーション等を除外
+                                const clone = body.cloneNode(true);
+                                const elementsToRemove = clone.querySelectorAll('script, style, nav, header, footer, .nav, .header, .footer, .sidebar');
+                                elementsToRemove.forEach(el => el.remove());
+                                
+                                const fallbackText = clone.innerText.trim();
+                                if (fallbackText.length > allText.length) {
+                                    allText = fallbackText;
+                                    textSources.push(`フォールバック(body): ${fallbackText.length}文字`);
+                                }
+                            }
+                        }
+                        
+                        // テキストの正規化
+                        allText = allText.replace(/\s+/g, ' ').trim().toLowerCase();
+                        
+                        console.log(`[fetch結果] URL: ${link.href}`);
+                        console.log(`[fetch結果] テキストソース: ${textSources.join(', ')}`);
+                        console.log(`[fetch結果] 取得テキスト長: ${allText.length}文字`);
+                        console.log(`[fetch結果] 取得テキスト: ${allText.substring(0, 500)}...`);
+                        
+                        const matchAvatarSub = !selectedAvatar || avatarKeywords.some(v => allText.includes(v));
+                        const matchKeywordSub = !keyword || allText.includes(keyword);
+                        const isMatchSub = selectedAvatar ? (matchAvatarSub && matchKeywordSub) : matchKeywordSub;
+                        
+                        if (isMatchSub) {
+                            console.log(`[fetch結果] ヒット: 本文で一致 (テキスト長: ${allText.length}文字)`);
+                        } else {
+                            console.log(`[fetch結果] ヒットなし: 完全に不一致 (テキスト長: ${allText.length}文字)`);
+                        }
+                        
+                        item.style.display = isMatchSub ? '' : 'none';
+                        return isMatchSub;
+                        
+                    } catch (error) {
+                        console.error(`[fetchエラー] URL: ${link.href}`, error);
+                        fetchInProgress--;
+                        if (fetchInProgress <= 0) {
+                            globalLoading.style.display = 'none';
+                        }
+                        item.style.display = 'none';
+                        return false;
+                    }
+                } else {
+                    console.log(`[fetchスキップ] 既に処理済み: ${link.href}`);
+                    item.style.display = 'none';
+                    return false;
+                }
+            } else {
+                console.log(`[ヘッダー検索] リンクなし: 非表示`);
+                item.style.display = 'none';
+                return false;
+            }
+        }
+
+        // キュー処理関数
+        async function processQueue() {
+            if (isProcessing || processingQueue.length === 0) return;
+            
+            isProcessing = true;
+            console.log(`[キュー処理開始] 残りアイテム数: ${processingQueue.length}`);
+            
+            while (processingQueue.length > 0) {
+                const { item, selectedAvatar, keyword, avatarKeywords } = processingQueue.shift();
+                await processItemSequentially(item, selectedAvatar, keyword, avatarKeywords);
+                
+                // 少し待機してから次のアイテムを処理
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            isProcessing = false;
+            console.log(`[キュー処理完了] 全アイテム処理完了`);
+        }
 
         function filterItems() {
             const selectedAvatar = dropdown.value;
-            const keyword = searchBox.value.toLowerCase().trim(); // trim()を追加
+            const keyword = searchBox.value.toLowerCase();
             const items = document.querySelectorAll('div.mb-16.bg-white');
+
+            console.log(`[検索開始] アバター: "${selectedAvatar}", キーワード: "${keyword}"`);
 
             // 選択されたアバターの全バリエーション（日本語・英語）を取得
             const avatarKeywords = selectedAvatar && AVATAR_MAP[selectedAvatar] ? AVATAR_MAP[selectedAvatar].map(v => v.toLowerCase()) : [];
@@ -222,323 +442,23 @@
             // 検索条件が変わった時だけfetchを許可
             const isConditionChanged = (lastAvatar !== selectedAvatar) || (lastKeyword !== keyword);
             if (isConditionChanged) {
+                console.log(`[検索条件変更] 前回のキャッシュをクリア`);
                 lastFetchUrls.clear();
+                processingQueue = [];
             }
             lastAvatar = selectedAvatar;
             lastKeyword = keyword;
 
-            console.log('[filterItems] 検索開始:', { selectedAvatar, keyword, keywordLength: keyword.length, avatarKeywords, isConditionChanged });
-
-                    // 非同期処理を同期的に実行するための関数
-        const processItemsSequentially = async () => {
-            for (let index = 0; index < items.length; index++) {
-                    const item = items[index];
-                    console.log(`[item ${index}] 処理開始`);
-                    
-                    // タイトル検索（正確なクラス指定）
-                    let title = item.querySelector('.text-text-default.font-bold.typography-16.\\!preserve-half-leading.mb-8.break-all')?.innerText.toLowerCase() || "";
-                    let fullText = title;
-
-                    // 詳細情報検索（typography-14クラス）
-                    const detailInfo = item.querySelector('.typography-14.\\!preserve-half-leading');
-                    if (detailInfo) {
-                        fullText += ' ' + detailInfo.innerText.toLowerCase();
-                    }
-
-                    console.log(`[item ${index}] タイトル: "${title}", 詳細: "${detailInfo?.innerText || ''}", 全文: "${fullText}"`);
-
-                    // アバター名（日本語・英語）いずれかに一致するか
-                    const matchAvatar = !selectedAvatar || avatarKeywords.some(v => fullText.includes(v));
-                    
-                    // キーワード検索（アバター選択時も含む）
-                    const matchKeyword = !keyword || fullText.includes(keyword);
-                    
-                    // 検索条件の判定を改善
-                    let isMatch = false;
-                    if (selectedAvatar && keyword) {
-                        // アバター選択 + キーワード入力: 両方に一致
-                        isMatch = matchAvatar && matchKeyword;
-                    } else if (selectedAvatar && !keyword) {
-                        // アバター選択 + キーワード未入力: アバター名のみに一致
-                        isMatch = matchAvatar;
-                    } else if (!selectedAvatar && keyword) {
-                        // アバター未選択 + キーワード入力: キーワードのみに一致
-                        isMatch = matchKeyword;
-                    } else {
-                        // 両方未選択: すべて表示
-                        isMatch = true;
-                    }
-
-                    console.log(`[item ${index}] マッチ結果:`, { matchAvatar, matchKeyword, isMatch, selectedAvatar, keyword });
-
-                    if (isMatch) {
-                        item.style.display = '';
-                        console.log(`[item ${index}] タイトル/詳細でヒット - 表示`);
-                        continue; // 次のアイテムへ
-                    }
-
-                    // タイトルと詳細情報でヒットしない場合は、typography-14 !preserve-half-leadingクラスから検索
-                    const typographyElements = item.querySelectorAll('.typography-14.\\!preserve-half-leading');
-                    if (typographyElements.length > 0) {
-                        console.log(`[item ${index}] typography-14要素を発見:`, typographyElements.length, '個');
-                        
-                        let isMatchInTypography = false;
-                        
-                        // 各typography要素を順次チェック
-                        for (let typoIndex = 0; typoIndex < typographyElements.length; typoIndex++) {
-                            const typoElement = typographyElements[typoIndex];
-                            const typoText = typoElement.innerText.toLowerCase();
-                            
-                            console.log(`[item ${index}] typography要素${typoIndex + 1}:`, typoText.substring(0, 100) + '...');
-                            
-                            const matchAvatarInTypography = !selectedAvatar || avatarKeywords.some(v => typoText.includes(v));
-                            const matchKeywordInTypography = !keyword || typoText.includes(keyword);
-                            
-                            let isMatchInThisTypo = false;
-                            if (selectedAvatar && keyword) {
-                                // アバター選択 + キーワード入力: 両方に一致
-                                isMatchInThisTypo = matchAvatarInTypography && matchKeywordInTypography;
-                            } else if (selectedAvatar && !keyword) {
-                                // アバター選択 + キーワード未入力: アバター名のみに一致
-                                isMatchInThisTypo = matchAvatarInTypography;
-                            } else if (!selectedAvatar && keyword) {
-                                // アバター未選択 + キーワード入力: キーワードのみに一致
-                                isMatchInThisTypo = matchKeywordInTypography;
-                            } else {
-                                // 両方未選択: すべて表示
-                                isMatchInThisTypo = true;
-                            }
-                            
-                            console.log(`[item ${index}] typography要素${typoIndex + 1}のマッチ結果:`, { 
-                                matchAvatarInTypography, 
-                                matchKeywordInTypography, 
-                                isMatchInThisTypo 
-                            });
-                            
-                            if (isMatchInThisTypo) {
-                                isMatchInTypography = true;
-                                console.log(`[item ${index}] typography要素${typoIndex + 1}でヒット`);
-                                break; // 一つでもヒットすれば十分
-                            }
-                        }
-                        
-                        if (isMatchInTypography) {
-                            item.style.display = '';
-                            console.log(`[item ${index}] typography-14でヒット - 表示`);
-                            continue; // 次のアイテムへ
-                        }
-                    }
-
-                    // typography-14でもヒットしない場合は、mt-16クラスから検索
-                    const headerInfo = item.querySelector('div.mt-16');
-                    if (headerInfo) {
-                        const headerText = headerInfo.innerText.toLowerCase();
-                        const matchAvatarInHeader = !selectedAvatar || avatarKeywords.some(v => headerText.includes(v));
-                        
-                        // キーワード検索（アバター選択時も含む）
-                        const matchKeywordInHeader = !keyword || headerText.includes(keyword);
-                        
-                        let isMatchInHeader = false;
-                        if (selectedAvatar && keyword) {
-                            // アバター選択 + キーワード入力: 両方に一致
-                            isMatchInHeader = matchAvatarInHeader && matchKeywordInHeader;
-                        } else if (selectedAvatar && !keyword) {
-                            // アバター選択 + キーワード未入力: アバター名のみに一致
-                            isMatchInHeader = matchAvatarInHeader;
-                        } else if (!selectedAvatar && keyword) {
-                            // アバター未選択 + キーワード入力: キーワードのみに一致
-                            isMatchInHeader = matchKeywordInHeader;
-                        } else {
-                            // 両方未選択: すべて表示
-                            isMatchInHeader = true;
-                        }
-                        
-                        console.log(`[item ${index}] ヘッダー検索:`, { headerText, matchAvatarInHeader, matchKeywordInHeader, isMatchInHeader, selectedAvatar, keyword });
-                        
-                        if (isMatchInHeader) {
-                            item.style.display = '';
-                            console.log(`[item ${index}] ヘッダーでヒット - 表示`);
-                            continue; // 次のアイテムへ
-                        }
-                    }
-
-                    // ヘッダーでもヒットしない場合は、no-underlineクラスのURL先から検索
-                    const link = item.querySelector('a.no-underline');
-                    if (link && link.href) {
-                        console.log(`[item ${index}] ヘッダーでヒットせず、fetch実行:`, link.href);
-                        
-                        if (isConditionChanged && !lastFetchUrls.has(link.href)) {
-                            // 最後の手段としてfetchを実行
-                            lastFetchUrls.add(link.href);
-                            fetchInProgress++;
-                            globalLoading.style.display = '';
-                            
-                            // fetch開始前に一旦非表示にする
-                            item.style.display = 'none';
-                            
-                            console.log(`[item ${index}] fetch開始:`, link.href);
-                            
-                            try {
-                                // v0.1の成功パターン: chrome.runtime.sendMessageを使用
-                                chrome.runtime.sendMessage({
-                                    type: 'fetchHtml',
-                                    url: link.href
-                                }, function(response) {
-                                    fetchInProgress--;
-                                    if (fetchInProgress <= 0) {
-                                        globalLoading.style.display = 'none';
-                                    }
-                                    
-                                    // ロード中インジケータを削除
-                                    const loadingElem = item.querySelector('.booth-loading-indicator');
-                                    if (loadingElem) loadingElem.remove();
-                                    
-                                    if (!response || !response.html) {
-                                        item.style.display = 'none';
-                                        return;
-                                    }
-                                    
-                                    // v0.1と同じHTML解析ロジック
-                                    const parser = new DOMParser();
-                                    const doc = parser.parseFromString(response.html, 'text/html');
-                                    
-                                    // grid.desktop:gap-40.mobile:gap-24親要素を優先的に検索
-                                    let allText = '';
-                                    const gridElem = doc.querySelector('.grid.desktop\\:gap-40.mobile\\:gap-24');
-                                    if (gridElem) {
-                                        allText = gridElem.innerText.toLowerCase();
-                                    } else {
-                                        const targetElem = doc.querySelector('.autolink.break-words.typography-16.whitespace-pre-line')
-                                            || doc.querySelector('.break-words.js-autolink.\\!m-0.\\!p-0.whitespace-pre-line.typography-14.desktop\\:typography-16');
-                                        if (targetElem && targetElem.parentElement) {
-                                            allText = targetElem.parentElement.innerText.toLowerCase();
-                                        } else if (targetElem) {
-                                            allText = targetElem.innerText.toLowerCase();
-                                        }
-                                    }
-                                    
-                                    console.log(`[item ${index}] fetch後の検索テキスト（v0.1と同じ解析）:`, allText);
-                                    
-                                    // アバターキーワードの詳細ログ
-                                    if (selectedAvatar) {
-                                        console.log(`[item ${index}] 選択されたアバター: "${selectedAvatar}"`);
-                                        console.log(`[item ${index}] アバターキーワード:`, avatarKeywords);
-                                        const avatarMatches = avatarKeywords.map(v => ({
-                                            keyword: v,
-                                            found: allText.includes(v),
-                                            position: allText.indexOf(v)
-                                        }));
-                                        console.log(`[item ${index}] アバターキーワードの一致詳細:`, avatarMatches);
-                                    }
-                                    
-                                    // キーワードの詳細ログ
-                                    if (keyword) {
-                                        console.log(`[item ${index}] 入力されたキーワード: "${keyword}"`);
-                                        const keywordFound = allText.includes(keyword);
-                                        const keywordPosition = allText.indexOf(keyword);
-                                        console.log(`[item ${index}] キーワードの一致詳細:`, { keyword, found: keywordFound, position: keywordPosition });
-                                    }
-                                    
-                                    // 検索条件の判定をより厳密に実行
-                                    const matchAvatarSub = !selectedAvatar || avatarKeywords.some(v => allText.includes(v));
-                                    const matchKeywordSub = !keyword || allText.includes(keyword);
-                                    
-                                    console.log(`[item ${index}] 基本一致判定:`, { 
-                                        selectedAvatar: !!selectedAvatar, 
-                                        keyword: !!keyword,
-                                        matchAvatarSub, 
-                                        matchKeywordSub,
-                                        avatarKeywords: selectedAvatar ? avatarKeywords : 'なし',
-                                        searchKeyword: keyword || 'なし'
-                                    });
-                                    
-                                    // 検索条件の組み合わせによる最終判定
-                                    let isMatchSub = false;
-                                    if (selectedAvatar && keyword) {
-                                        // アバター選択 + キーワード入力: 両方に一致する必要
-                                        isMatchSub = matchAvatarSub && matchKeywordSub;
-                                        console.log(`[item ${index}] アバター選択+キーワード入力: 両方一致が必要`, { matchAvatarSub, matchKeywordSub, isMatchSub });
-                                    } else if (selectedAvatar && !keyword) {
-                                        // アバター選択 + キーワード未入力: アバター名のみに一致
-                                        isMatchSub = matchAvatarSub;
-                                        console.log(`[item ${index}] アバター選択のみ: アバター名一致が必要`, { matchAvatarSub, isMatchSub });
-                                    } else if (!selectedAvatar && keyword) {
-                                        // アバター未選択 + キーワード入力: キーワードのみに一致
-                                        isMatchSub = matchKeywordSub;
-                                        console.log(`[item ${index}] キーワード入力のみ: キーワード一致が必要`, { matchKeywordSub, isMatchSub });
-                                    } else {
-                                        // 両方未選択: すべて表示
-                                        isMatchSub = true;
-                                        console.log(`[item ${index}] 両方未選択: すべて表示`, { isMatchSub });
-                                    }
-                                    
-                                    console.log(`[item ${index}] fetch後のマッチ結果:`, { matchAvatarSub, matchKeywordSub, isMatchSub, selectedAvatar, keyword });
-                                    
-                                    // 確実に表示/非表示を設定（fetch後の最終判定）
-                                    if (isMatchSub) {
-                                        item.style.display = '';
-                                        console.log(`[item ${index}] fetch後の表示状態: 表示（一致）`);
-                                    } else {
-                                        item.style.display = 'none';
-                                        console.log(`[item ${index}] fetch後の表示状態: 非表示（不一致）`);
-                                    }
-                                    
-                                    // デバッグ用：表示されているアイテムの確認
-                                    if (isMatchSub) {
-                                        console.log(`[item ${index}] 表示されるアイテムの詳細:`, {
-                                            title: title,
-                                            hasAvatarMatch: selectedAvatar ? matchAvatarSub : 'N/A',
-                                            hasKeywordMatch: keyword ? matchKeywordSub : 'N/A',
-                                            finalDecision: '表示'
-                                        });
-                                    }
-                                });
-                                
-                                // ロード中インジケータを追加
-                                const loadingIndicator = document.createElement('div');
-                                loadingIndicator.className = 'booth-loading-indicator';
-                                loadingIndicator.textContent = '読み込み中...';
-                                loadingIndicator.style.cssText = `
-                                    position: absolute;
-                                    top: 50%;
-                                    left: 50%;
-                                    transform: translate(-50%, -50%);
-                                    background: rgba(0, 0, 0, 0.8);
-                                    color: white;
-                                    padding: 8px 16px;
-                                    border-radius: 4px;
-                                    font-size: 12px;
-                                    z-index: 1000;
-                                `;
-                                item.style.position = 'relative';
-                                item.appendChild(loadingIndicator);
-                                
-                            } catch (error) {
-                                console.error(`[item ${index}] chrome.runtime.sendMessageエラー:`, error);
-                                fetchInProgress--;
-                                if (fetchInProgress <= 0) {
-                                    globalLoading.style.display = 'none';
-                                }
-                                item.style.display = 'none';
-                                continue; // 次のアイテムへ
-                            }
-                        } else if (!isConditionChanged) {
-                            // 検索条件が変わっていない場合はfetchしない
-                            item.style.display = 'none';
-                        }
-                    } else {
-                        console.log(`[item ${index}] no-underlineリンクなし - 非表示`);
-                        item.style.display = 'none';
-                    }
-                    
-                    console.log(`[item ${index}] 処理完了`);
-                }
-                
-                console.log('すべてのアイテムの処理が完了しました');
-            };
+            // キューをクリアして新しいアイテムを追加
+            processingQueue = [];
             
-            // 非同期処理を開始
-            processItemsSequentially();
+            items.forEach((item, index) => {
+                console.log(`[アイテム${index + 1}] キューに追加`);
+                processingQueue.push({ item, selectedAvatar, keyword, avatarKeywords });
+            });
+
+            // キュー処理を開始
+            processQueue();
         }
 
         // イベント紐付け
@@ -548,23 +468,6 @@
         searchBox.addEventListener('input', () => {
             if (searchBox.value !== '') {
                 dropdown.value = '';
-            }
-        });
-
-        // プルダウン選択時にキーワード検索を制御
-        dropdown.addEventListener('change', () => {
-            if (dropdown.value !== '') {
-                // アバターが選択されている場合
-                searchBox.placeholder = 'アバター名とキーワードの両方に一致するアイテムを検索';
-                searchBox.disabled = false; // 検索ボックスを有効化
-                searchBox.style.opacity = '1'; // 視覚的に有効化
-                searchBox.style.cursor = 'text';
-            } else {
-                // 「すべて」が選択されている場合
-                searchBox.placeholder = 'アバター名で検索';
-                searchBox.disabled = false; // 検索ボックスを有効化
-                searchBox.style.opacity = '1'; // 視覚的に有効化
-                searchBox.style.cursor = 'text';
             }
         });
     }
