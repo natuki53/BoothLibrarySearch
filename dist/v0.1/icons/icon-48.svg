@@ -1,0 +1,6 @@
+<svg width="48" height="48" xmlns="http://www.w3.org/2000/svg">
+  <rect width="48" height="48" fill="#4A90E2"/>
+  <rect x="4" y="4" width="40" height="40" fill="white" rx="2"/>
+  <text x="24" y="30" font-family="Arial, sans-serif" font-size="16" 
+        text-anchor="middle" fill="#4A90E2" font-weight="bold">B</text>
+</svg>
