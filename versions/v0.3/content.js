@@ -286,6 +286,7 @@
                 this.maxSize = maxSize;
                 this.cache = new Map();
                 this.accessOrder = [];
+                console.log(`[LRUキャッシュ初期化] 最大サイズ: ${maxSize}`);
             }
 
             get(key) {
@@ -299,9 +300,11 @@
                     
                     // パフォーマンス計測
                     performanceMetrics.cacheHits++;
+                    console.log(`[LRUキャッシュ] ヒット: "${key}", キャッシュサイズ: ${this.cache.size}/${this.maxSize}`);
                     return this.cache.get(key);
                 }
                 performanceMetrics.cacheMisses++;
+                console.log(`[LRUキャッシュ] ミス: "${key}", キャッシュサイズ: ${this.cache.size}/${this.maxSize}`);
                 return null;
             }
 
@@ -312,10 +315,14 @@
                     if (index > -1) {
                         this.accessOrder.splice(index, 1);
                     }
+                    console.log(`[LRUキャッシュ] 更新: "${key}", キャッシュサイズ: ${this.cache.size}/${this.maxSize}`);
                 } else if (this.cache.size >= this.maxSize) {
                     // キャッシュが一杯の場合、最も古いものを削除
                     const oldestKey = this.accessOrder.shift();
                     this.cache.delete(oldestKey);
+                    console.log(`[LRUキャッシュ] 容量上限、古いキー削除: "${oldestKey}", キャッシュサイズ: ${this.cache.size}/${this.maxSize}`);
+                } else {
+                    console.log(`[LRUキャッシュ] 新規追加: "${key}", キャッシュサイズ: ${this.cache.size + 1}/${this.maxSize}`);
                 }
                 
                 this.cache.set(key, value);
@@ -323,8 +330,10 @@
             }
 
             clear() {
+                const size = this.cache.size;
                 this.cache.clear();
                 this.accessOrder = [];
+                console.log(`[LRUキャッシュ] クリア完了: ${size}件のエントリを削除`);
             }
 
             getSize() {
@@ -333,26 +342,41 @@
         }
 
         // 高速化: 改良されたキャッシュシステム
+        console.log('[キャッシュシステム初期化開始]');
         let itemCache = new LRUCache(150); // 最大150件までキャッシュ
         let searchIndex = new LRUCache(50); // 検索インデックスもキャッシュ
         let lastSearchResults = new Set();
+        console.log('[キャッシュシステム初期化完了] アイテムキャッシュ: 150件, 検索インデックス: 50件');
 
         // 高速化: 検索アルゴリズムの最適化
         function optimizedTextSearch(text, keywords, useRegex = false) {
-            if (!text || !keywords || keywords.length === 0) return true;
+            if (!text || !keywords || keywords.length === 0) {
+                console.log('[テキスト検索] 検索条件なし、全て表示');
+                return true;
+            }
+            
+            console.log(`[テキスト検索開始] テキスト長: ${text.length}文字, キーワード: ${keywords.join(', ')}, 正規表現: ${useRegex}`);
             
             const normalizedText = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            console.log(`[テキスト検索] 正規化テキスト長: ${normalizedText.length}文字`);
             
             if (useRegex) {
                 try {
                     const regex = new RegExp(keywords.join('|'), 'i');
-                    return regex.test(normalizedText);
+                    const result = regex.test(normalizedText);
+                    console.log(`[テキスト検索] 正規表現検索結果: ${result}`);
+                    return result;
                 } catch (e) {
+                    console.log('[テキスト検索] 正規表現エラー、通常検索にフォールバック:', e.message);
                     // 正規表現が無効な場合は通常の検索にフォールバック
-                    return keywords.some(keyword => normalizedText.includes(keyword.toLowerCase()));
+                    const result = keywords.some(keyword => normalizedText.includes(keyword.toLowerCase()));
+                    console.log(`[テキスト検索] フォールバック検索結果: ${result}`);
+                    return result;
                 }
             } else {
-                return keywords.every(keyword => normalizedText.includes(keyword.toLowerCase()));
+                const result = keywords.every(keyword => normalizedText.includes(keyword.toLowerCase()));
+                console.log(`[テキスト検索] 通常検索結果: ${result}, キーワード一致状況: ${keywords.map(k => ({ keyword: k, found: normalizedText.includes(k.toLowerCase()) }))}`);
+                return result;
             }
         }
 
@@ -362,14 +386,20 @@
             const fetchQueue = [];
             const startTime = performance.now();
             
+            console.log(`[並列処理開始] アイテム数: ${items.length}, アバター: "${selectedAvatar}", キーワード: "${keyword}"`);
+            
             try {
                 // 1. 高速プリフィルタリング（タイトルとヘッダーのみ）
+                console.log('[並列処理] プリフィルタリング開始');
                 const preFilterResults = await preFilterItems(items, selectedAvatar, keyword, avatarKeywords);
                 
                 // プリフィルタリング結果を表示マップに反映
+                let preFilterMatchCount = 0;
                 preFilterResults.forEach((result, item) => {
                     displayMap.set(item, result);
-                    if (!result) {
+                    if (result) {
+                        preFilterMatchCount++;
+                    } else {
                         // fetchが必要なアイテムをキューに追加
                         const link = item.querySelector('a.no-underline');
                         if (link && link.href && !lastFetchUrls.has(link.href)) {
@@ -378,15 +408,21 @@
                     }
                 });
                 
+                console.log(`[並列処理] プリフィルタリング完了: ${preFilterMatchCount}件ヒット, ${fetchQueue.length}件fetch必要`);
+                
                 // 2. 並列fetch処理（最大同時処理数を10件に制限）
                 if (fetchQueue.length > 0) {
                     globalLoading.style.display = '';
+                    console.log(`[並列処理] fetch処理開始: ${fetchQueue.length}件, 最大同時処理: ${MAX_CONCURRENT_FETCHES}件`);
                     
                     // バッチサイズを動的に調整（最大同時処理数を10件に制限）
                     const optimalBatchSize = Math.min(MAX_CONCURRENT_FETCHES, Math.ceil(fetchQueue.length / 3));
+                    console.log(`[並列処理] バッチサイズ: ${optimalBatchSize}`);
                     
                     for (let i = 0; i < fetchQueue.length; i += optimalBatchSize) {
                         const batch = fetchQueue.slice(i, i + optimalBatchSize);
+                        console.log(`[並列処理] バッチ${Math.floor(i / optimalBatchSize) + 1}処理開始: ${batch.length}件`);
+                        
                         const batchPromises = batch.map(async ({ item, link, index }) => {
                             try {
                                 lastFetchUrls.add(link.href);
@@ -399,6 +435,7 @@
                                     html = cachedHtml;
                                     console.log(`[アイテム${index}] キャッシュヒット: ${link.href}`);
                                 } else {
+                                    console.log(`[アイテム${index}] fetch開始: ${link.href}`);
                                     const response = await new Promise((resolve) => {
                                         chrome.runtime.sendMessage({
                                             type: 'fetchHtml',
@@ -407,20 +444,29 @@
                                     });
                                     
                                     if (!response || !response.html) {
+                                        console.log(`[アイテム${index}] fetch失敗: レスポンスなし`);
                                         displayMap.set(item, false);
                                         return;
                                     }
                                     
                                     html = response.html;
                                     itemCache.set(link.href, html);
+                                    console.log(`[アイテム${index}] fetch成功: ${html.length}文字`);
                                 }
                                 
                                 // 最適化されたテキスト抽出
                                 const allText = extractOptimizedText(html);
+                                console.log(`[アイテム${index}] テキスト抽出: ${allText.length}文字`);
                                 
                                 // 高速マッチング
                                 const isMatch = optimizedTextSearch(allText, [keyword, ...avatarKeywords].filter(Boolean));
                                 displayMap.set(item, isMatch);
+                                
+                                if (isMatch) {
+                                    console.log(`[アイテム${index}] マッチング成功: キーワード "${keyword}", アバター "${selectedAvatar}"`);
+                                } else {
+                                    console.log(`[アイテム${index}] マッチング失敗: キーワード "${keyword}", アバター "${selectedAvatar}"`);
+                                }
                                 
                             } catch (error) {
                                 console.error(`[アイテム${index}] fetchエラー:`, error);
@@ -430,16 +476,23 @@
                         
                         // バッチを並列実行（最大同時処理数を10件に制限）
                         await Promise.all(batchPromises);
+                        console.log(`[並列処理] バッチ${Math.floor(i / optimalBatchSize) + 1}完了`);
                         
                         // バッチごとに表示更新（ユーザビリティ向上）
                         batchUpdateDisplay(items, displayMap);
                     }
                     
                     globalLoading.style.display = 'none';
+                    console.log(`[並列処理] fetch処理完了`);
                 }
                 
                 // 3. 最終的な表示更新
                 batchUpdateDisplay(items, displayMap);
+                
+                // 結果統計
+                const totalItems = displayMap.size;
+                const visibleItems = Array.from(displayMap.values()).filter(show => show).length;
+                console.log(`[並列処理] 最終結果: ${visibleItems}/${totalItems}件表示`);
                 
                 // パフォーマンス計測
                 const endTime = performance.now();
@@ -463,15 +516,20 @@
         async function preFilterItems(items, selectedAvatar, keyword, avatarKeywords) {
             const results = new Map();
             
+            console.log(`[プリフィルタリング開始] アイテム数: ${items.length}, アバター: "${selectedAvatar}", キーワード: "${keyword}"`);
+            console.log(`[プリフィルタリング] アバターキーワード: ${avatarKeywords.join(', ')}`);
+            
             try {
                 // Web Workersを使用して並列処理（可能な場合）
                 if (window.Worker && items.length > 50) {
+                    console.log('[プリフィルタリング] Web Worker使用');
                     // 大量のアイテムがある場合はWeb Workerを使用
                     return await preFilterWithWorker(items, selectedAvatar, keyword, avatarKeywords);
                 }
                 
+                console.log('[プリフィルタリング] 通常処理開始');
                 // 通常のプリフィルタリング
-                items.forEach((item) => {
+                items.forEach((item, index) => {
                     try {
                         const title = item.querySelector('.text-text-default.font-bold.typography-16.\\!preserve-half-leading.mb-8.break-all')?.innerText.toLowerCase() || "";
                         const headers = Array.from(item.querySelectorAll('div.typography-14.\\!preserve-half-leading'))
@@ -480,17 +538,28 @@
                         
                         const allText = `${title} ${headers}`;
                         
+                        console.log(`[プリフィルタリングアイテム${index}] タイトル: "${title}", ヘッダー: "${headers}", テキスト長: ${allText.length}文字`);
+                        
                         // 高速マッチング
                         const matchAvatar = !selectedAvatar || avatarKeywords.some(v => allText.includes(v));
                         const matchKeyword = !keyword || allText.includes(keyword);
                         const isMatch = selectedAvatar ? (matchAvatar && matchKeyword) : matchKeyword;
                         
+                        if (isMatch) {
+                            console.log(`[プリフィルタリングアイテム${index}] ヒット: アバター一致=${matchAvatar}, キーワード一致=${matchKeyword}, マッチング成功`);
+                        } else {
+                            console.log(`[プリフィルタリングアイテム${index}] ヒットなし: アバター一致=${matchAvatar}, キーワード一致=${matchKeyword}, マッチング失敗`);
+                        }
+                        
                         results.set(item, isMatch);
                     } catch (itemError) {
-                        console.error('[プリフィルタリングアイテムエラー]', itemError);
+                        console.error(`[プリフィルタリングアイテム${index}エラー]`, itemError);
                         results.set(item, false);
                     }
                 });
+                
+                const matchCount = Array.from(results.values()).filter(r => r).length;
+                console.log(`[プリフィルタリング完了] ヒット: ${matchCount}件, ヒットなし: ${items.length - matchCount}件`);
                 
                 return results;
             } catch (error) {
@@ -567,6 +636,8 @@
         // 高速化: 最適化されたテキスト抽出
         function extractOptimizedText(html) {
             try {
+                console.log(`[テキスト抽出開始] HTML長: ${html.length}文字`);
+                
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 
@@ -584,10 +655,14 @@
                     if (elem) {
                         const text = elem.innerText.trim();
                         if (text.length > 50) {
-                            return text.replace(/\s+/g, ' ').trim().toLowerCase();
+                            const extractedText = text.replace(/\s+/g, ' ').trim().toLowerCase();
+                            console.log(`[テキスト抽出成功] セレクター: "${selector}", 抽出テキスト長: ${extractedText.length}文字`);
+                            return extractedText;
                         }
                     }
                 }
+                
+                console.log('[テキスト抽出] 優先度付きセレクターでテキストが見つかりません。フォールバック処理を実行');
                 
                 // フォールバック: 最適化されたbody処理
                 const body = doc.body;
@@ -595,9 +670,12 @@
                     const clone = body.cloneNode(true);
                     const elementsToRemove = clone.querySelectorAll('script, style, nav, header, footer, .nav, .header, .footer, .sidebar, .ad, .advertisement');
                     elementsToRemove.forEach(el => el.remove());
-                    return clone.innerText.replace(/\s+/g, ' ').trim().toLowerCase();
+                    const fallbackText = clone.innerText.replace(/\s+/g, ' ').trim().toLowerCase();
+                    console.log(`[テキスト抽出完了] フォールバック処理でテキスト抽出: ${fallbackText.length}文字`);
+                    return fallbackText;
                 }
                 
+                console.log('[テキスト抽出] body要素が見つかりません');
                 return '';
             } catch (error) {
                 console.error('[テキスト抽出エラー]', error);
@@ -608,26 +686,37 @@
         // 高速化: バッチ処理によるDOM更新
         function batchUpdateDisplay(items, displayMap) {
             try {
+                console.log(`[表示更新開始] アイテム数: ${items.length}, 表示マップサイズ: ${displayMap.size}`);
+                
                 // 表示状態を一括で更新
                 const fragment = document.createDocumentFragment();
                 const hiddenItems = [];
+                let visibleCount = 0;
+                let hiddenCount = 0;
                 
-                items.forEach(item => {
+                items.forEach((item, index) => {
                     const shouldShow = displayMap.get(item);
                     if (shouldShow) {
                         item.style.display = '';
+                        visibleCount++;
+                        console.log(`[アイテム${index}] 表示: アバター "${item.querySelector('.text-sm.text-gray-600')?.textContent || '不明'}"`);
                     } else {
                         item.style.display = 'none';
                         hiddenItems.push(item);
+                        hiddenCount++;
+                        console.log(`[アイテム${index}] 非表示: アバター "${item.querySelector('.text-sm.text-gray-600')?.textContent || '不明'}"`);
                     }
                 });
                 
                 // 非表示アイテムを一括で処理
                 if (hiddenItems.length > 0) {
+                    console.log(`[非表示処理] ${hiddenItems.length}件のアイテムを非表示に設定`);
                     hiddenItems.forEach(item => {
                         item.style.display = 'none';
                     });
                 }
+                
+                console.log(`[表示更新完了] 表示: ${visibleCount}件, 非表示: ${hiddenCount}件, 合計: ${items.length}件`);
             } catch (error) {
                 console.error('[表示更新エラー]', error);
             }
