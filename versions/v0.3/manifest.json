@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Booth Library Search",
-    "version": "0.2",
+    "version": "0.3",
     "description": "Boothライブラリに検索機能を追加する拡張機能",
     "permissions": ["scripting"],
     "host_permissions": [
