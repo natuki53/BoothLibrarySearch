@@ -1,4 +1,4 @@
-# 🎭 Booth Library Search for VRChat
+# Booth Library Search for VRChat
 
 VRChatでBoothのライブラリを検索するための**ブラウザ拡張機能**です。
 
@@ -107,7 +107,7 @@ cp -r versions/v0.1/* versions/v0.4/
 
 ## 🔗 リンク
 
-- **BOOTH**: [もふまじっくもふまじっく](https://mofumagic.booth.pm/items/7150269)
+- **BOOTH**: [もふまじっく](https://mofumagic.booth.pm/items/7150269)
 - **GitHub**: [natuki53/BoothLibrarySearch](https://github.com/natuki53/BoothLibrarySearch)
 
 ## 📄 ライセンス
