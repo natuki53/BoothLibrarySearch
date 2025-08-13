@@ -214,6 +214,24 @@
         let fetchInProgress = 0;
         let processingQueue = [];
         let isProcessing = false;
+        let totalProcessed = 0;
+        let isSearchInProgress = false; // 検索処理全体の進行状況を管理
+
+        // ローディング表示を管理する関数
+        function showLoading() {
+            globalLoading.style.display = '';
+            globalLoading.textContent = '検索中…';
+        }
+
+        function hideLoading() {
+            globalLoading.style.display = 'none';
+        }
+
+        function updateLoadingText(text) {
+            if (globalLoading.style.display !== 'none') {
+                globalLoading.textContent = text;
+            }
+        }
 
         // アイテムを一つ一つ順番に処理する関数
         async function processItemSequentially(item, selectedAvatar, keyword, avatarKeywords, itemIndex) {
@@ -276,7 +294,9 @@
                 if (!lastFetchUrls.has(link.href)) {
                     lastFetchUrls.add(link.href);
                     fetchInProgress++;
-                    globalLoading.style.display = '';
+                    
+                    // fetch中のローディングテキストを更新
+                    updateLoadingText(`詳細検索中… (${fetchInProgress}件処理中)`);
                     
                     console.log(`[アイテム${itemIndex}] fetch開始: ${link.href}`);
                     
@@ -289,8 +309,12 @@
                         });
                         
                         fetchInProgress--;
-                        if (fetchInProgress <= 0) {
-                            globalLoading.style.display = 'none';
+                        
+                        // fetch完了後のローディングテキストを更新
+                        if (fetchInProgress > 0) {
+                            updateLoadingText(`詳細検索中… (${fetchInProgress}件処理中)`);
+                        } else {
+                            updateLoadingText('検索完了中…');
                         }
                         
                         if (!response || !response.html) {
@@ -405,9 +429,14 @@
                     } catch (error) {
                         console.error(`[アイテム${itemIndex}] fetchエラー: URL ${link.href}`, error);
                         fetchInProgress--;
-                        if (fetchInProgress <= 0) {
-                            globalLoading.style.display = 'none';
+                        
+                        // エラー後のローディングテキストを更新
+                        if (fetchInProgress > 0) {
+                            updateLoadingText(`詳細検索中… (${fetchInProgress}件処理中)`);
+                        } else {
+                            updateLoadingText('検索完了中…');
                         }
+                        
                         item.style.display = 'none';
                         return false;
                     }
@@ -423,23 +452,51 @@
             }
         }
 
-        // キュー処理関数
-        async function processQueue() {
+        // バッチ処理関数（5個区切り）
+        async function processBatch() {
             if (isProcessing || processingQueue.length === 0) return;
             
             isProcessing = true;
-            console.log(`[キュー処理開始] 残りアイテム数: ${processingQueue.length}`);
+            const batchSize = 5;
+            const totalItems = processingQueue.length;
+            console.log(`[バッチ処理開始] 残りアイテム数: ${processingQueue.length}, バッチサイズ: ${batchSize}`);
             
             while (processingQueue.length > 0) {
-                const { item, selectedAvatar, keyword, avatarKeywords, itemIndex } = processingQueue.shift();
-                await processItemSequentially(item, selectedAvatar, keyword, avatarKeywords, itemIndex);
+                // 5個ずつバッチを作成
+                const currentBatch = processingQueue.splice(0, batchSize);
+                const currentBatchIndex = Math.floor((totalItems - processingQueue.length - currentBatch.length) / batchSize) + 1;
+                const totalBatches = Math.ceil(totalItems / batchSize);
                 
-                // 少し待機してから次のアイテムを処理
-                await new Promise(resolve => setTimeout(resolve, 100));
+                console.log(`[バッチ処理] 現在のバッチ: ${currentBatch.length}個のアイテム (${currentBatchIndex}/${totalBatches})`);
+                
+                // バッチ処理中のローディングテキストを更新
+                updateLoadingText(`検索中… バッチ${currentBatchIndex}/${totalBatches} (${totalProcessed + currentBatch.length}/${totalItems}件処理済み)`);
+                
+                // バッチ内のアイテムを並行処理
+                const batchPromises = currentBatch.map(({ item, selectedAvatar, keyword, avatarKeywords, itemIndex }) => 
+                    processItemSequentially(item, selectedAvatar, keyword, avatarKeywords, itemIndex)
+                );
+                
+                // バッチ内の全アイテムが完了するまで待機
+                await Promise.all(batchPromises);
+                
+                // 処理済みアイテム数を更新
+                totalProcessed += currentBatch.length;
+                console.log(`[バッチ処理] バッチ完了: ${totalProcessed}個のアイテム処理済み, 残り: ${processingQueue.length}個`);
+                
+                // バッチ間で少し待機（UIの更新を確認）
+                if (processingQueue.length > 0) {
+                    console.log(`[バッチ処理] 次のバッチまで待機中...`);
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
             }
             
             isProcessing = false;
-            console.log(`[キュー処理完了] 全アイテム処理完了`);
+            console.log(`[バッチ処理完了] 全アイテム処理完了`);
+            
+            // 検索処理完了
+            isSearchInProgress = false;
+            hideLoading();
         }
 
         function filterItems() {
@@ -448,6 +505,11 @@
             const items = document.querySelectorAll('div.mb-16.bg-white');
 
             console.log(`[検索開始] アバター: "${selectedAvatar}", キーワード: "${keyword}"`);
+
+            // 検索処理開始
+            isSearchInProgress = true;
+            showLoading();
+            updateLoadingText('検索準備中…');
 
             // 選択されたアバターの全バリエーション（日本語・英語）を取得
             const avatarKeywords = selectedAvatar && AVATAR_MAP[selectedAvatar] ? AVATAR_MAP[selectedAvatar].map(v => v.toLowerCase()) : [];
@@ -458,6 +520,7 @@
                 console.log(`[検索条件変更] 前回のキャッシュをクリア`);
                 lastFetchUrls.clear();
                 processingQueue = [];
+                totalProcessed = 0;
             }
             lastAvatar = selectedAvatar;
             lastKeyword = keyword;
@@ -469,8 +532,8 @@
                 processingQueue.push({ item, selectedAvatar, keyword, avatarKeywords, itemIndex: index });
             });
 
-            // キュー処理を開始
-            processQueue();
+            // バッチ処理を開始
+            processBatch();
         }
 
         // イベント紐付け
