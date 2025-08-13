@@ -1,0 +1,27 @@
+{
+    "manifest_version": 3,
+    "name": "Booth Library Search",
+    "version": "0.3",
+    "description": "Boothライブラリに検索機能を追加する拡張機能",
+    "permissions": ["scripting"],
+    "host_permissions": [
+        "https://booth.pm/library*",
+        "https://booth.pm/library/gifts*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": ["https://*.booth.pm/library*"],
+            "js": ["content.js"],
+            "css": ["styles.css"]
+        }
+    ],
+    "icons": {
+        "16": "icon.png",
+        "32": "icon.png",
+        "48": "icon.png",
+        "128": "icon.png"
+    }
+}
